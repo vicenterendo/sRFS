@@ -22,7 +22,11 @@ from PyInquirer import style_from_dict, Token, prompt, Separator
 from pprint import pprint
 from natsort import natsorted, ns
 import platform
+from cryptography.fernet import Fernet
 
+class crypto:
+      key = None
+      fernet = None
 
 class Prompt:
       def connOpen(message):
