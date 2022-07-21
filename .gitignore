@@ -3,6 +3,7 @@ server/password.txt
 client/lastIp.txt
 password.txt
 lastIp.txt
+key.srfskey
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

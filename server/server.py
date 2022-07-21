@@ -3,6 +3,7 @@ from multiprocessing import Event
 import os
 from re import L
 import subprocess
+from telnetlib import ENCRYPT
 
 def clearConsole():
       if os.name == 'nt':
@@ -17,24 +18,21 @@ import pickle
 import shutil
 import tempfile as tfutils
 from pathlib import Path
-import colorama
+import colorama as pcolor
 from PyInquirer import style_from_dict, Token, prompt, Separator
 from pprint import pprint
 from natsort import natsorted, ns
 import platform
 from cryptography.fernet import Fernet
-
-class crypto:
-      key = None
-      fernet = None
+from Crypto.Cipher import AES
 
 class Prompt:
       def connOpen(message):
-            print(colorama.Fore.GREEN + colorama.Style.BRIGHT + '[+] ' + colorama.Style.RESET_ALL + colorama.Fore.BLUE + message + colorama.Style.RESET_ALL)
+            print(pcolor.Fore.GREEN + pcolor.Style.BRIGHT + '[+] ' + pcolor.Style.RESET_ALL + pcolor.Fore.BLUE + message + pcolor.Style.RESET_ALL)
       def connMessage(message):
-            print(colorama.Fore.CYAN + colorama.Style.BRIGHT + '[/] ' + colorama.Style.RESET_ALL + colorama.Fore.BLUE + message + colorama.Style.RESET_ALL)
+            print(pcolor.Fore.CYAN + pcolor.Style.BRIGHT + '[/] ' + pcolor.Style.RESET_ALL + pcolor.Fore.BLUE + message + pcolor.Style.RESET_ALL)
       def connClose(message):
-            print(colorama.Fore.RED + colorama.Style.BRIGHT + '[-] ' + colorama.Style.RESET_ALL + colorama.Fore.BLUE + message + colorama.Style.RESET_ALL)
+            print(pcolor.Fore.RED + pcolor.Style.BRIGHT + '[-] ' + pcolor.Style.RESET_ALL + pcolor.Fore.BLUE + message + pcolor.Style.RESET_ALL)
 
 class EventID:
       CLOSECONN = -1
@@ -92,15 +90,16 @@ def passwordPrompt():
       answer = prompt(properties, style=style)
       return answer['password']
 
-
-if 'password.txt' in os.listdir():
-      password = open('./password.txt', 'r').read()
+if not os.path.exists("./key.srfskey"):
+      counter = os.urandom(16) #CTR counter string value with length of 16 bytes.
+      key = os.urandom(32) #AES keys may be 128 bits (16 bytes), 192 bits (24 bytes) or 256 bits (32 bytes) long.
+      crypto = AES.new(key, AES.MODE_CTR, counter=lambda: counter)
+      print(pcolor.Fore.BLUE + pcolor.Style.BRIGHT + "Generating encryption key...")
+      with open("./key.srfskey", "wb") as f:
+            f.write(pickle.dumps(crypto))
+      print(pcolor.Fore.GREEN + f"Key saved on{pcolor.Style.BRIGHT} key.srfskey" + pcolor.Style.RESET_ALL)
 else:
-      print(colorama.Fore.RED + colorama.Style.BRIGHT + 'No password.txt detected on user\'s home directory.' + colorama.Style.RESET_ALL)
-      password = passwordPrompt()
-      open('password.txt', 'w').write(password)
-      print(colorama.Fore.GREEN + colorama.Style.BRIGHT + 'Password has been set and saved on password.txt.' + colorama.Style.RESET_ALL)
-
+      crypto = pickle.loads(open("./key.srfskey", "rb").read())
 
 os.chdir(str(Path.home()))
 server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -115,11 +114,11 @@ def rcvFile():
       global fts
       fts.listen()
       ftc, addr = fts.accept()
-      size = int(ftc.recv(1024))
-      ftc.send('ready'.encode('utf-8'))
+      size = int(crypto.decrypt(ftc.recv(1024)))
+      ftc.send(crypto.encrypt('ready'.encode('utf-8')))
       filedata = bytes()
       while sys.getsizeof(filedata) < size:
-            filedata += ftc.recv(1024)
+            filedata += crypto.decrypt(ftc.recv(1024))
       ftc.close()
             
       return filedata
@@ -132,7 +131,7 @@ def sendFile(filename):
             data = f.read()
             size = sys.getsizeof(data)
             
-      ftc.send(str(size).encode('utf-8'))
+      ftc.send(crypto.encrypt(str(size).encode('utf-8')))
       ftc.recv(1024)
       
       with open(filename, 'rb') as f:
@@ -142,31 +141,19 @@ def sendFile(filename):
                   if not packet:
                         break
                   
-                  ftc.send(packet)
-      
-      
-
+                  ftc.send(crypto.encrypt(packet))
 
 while True:
       server.listen()
       conn, addr = server.accept()
       
-      while True:
-            insertedpassword = pickle.loads(conn.recv(1024))
-            if insertedpassword == password:
-                  conn.send(pickle.dumps(True))
-                  break
-            else:
-                  conn.send(pickle.dumps(False))
-                  
-      
       Prompt.connOpen('Connected to ' + str(addr[0]))
       while True:
             try:
-                  conn.settimeout(15)
+                  conn.settimeout(3)
                   while True:
                         try: 
-                              rawEntry = conn.recv(2048)
+                              rawEntry = crypto.decrypt(conn.recv(2048))
                               break
                         except: pass
                   conn.settimeout(None)
@@ -181,10 +168,10 @@ while True:
                   Prompt.connMessage("Request received: " + str(jsonEntry))
                   
                   if action == EventID.GETPLATFORM:
-                        conn.send(platform.system().encode('utf-8'))
+                        conn.send(crypto.encrypt(platform.system().encode('utf-8')))
 
                   if action == EventID.GETCWD:
-                        conn.send(os.getcwd().encode('utf-8'))
+                        conn.send(crypto.encrypt(os.getcwd().encode('utf-8')))
                         
                   
                   if action == EventID.CLOSECONN:
@@ -202,7 +189,7 @@ while True:
                                     dirList[i] = dirEntry(1, entry)
                               else:
                                     dirList[i] = dirEntry(0, entry)
-                        conn.send(pickle.dumps(dirList))
+                        conn.send(crypto.encrypt(pickle.dumps(dirList)))
                         
                   if action == EventID.GETFILE:
                         path = jsonEntry['details']['path']
@@ -229,15 +216,15 @@ while True:
                   if action == EventID.CHECKPATH:
                         path = jsonEntry['details']['path']
                         if os.path.exists(path):
-                              conn.send(pickle.dumps(True))
+                              conn.send(crypto.encrypt(pickle.dumps(True)))
                         else:
-                              conn.send(pickle.dumps(False))
+                              conn.send(crypto.encrypt(pickle.dumps(False)))
 
                   if action == EventID.RUNCMD:
                         fullcommand = jsonEntry['details']['command']
                         command = jsonEntry['details']['command'].split()[0]
                         parameters = fullcommand.strip(jsonEntry['details']['command'].split()[0])
-                        conn.send(subprocess.check_output([command]))
+                        conn.send(crypto.encrypt(subprocess.check_output([command])))
 
                   
                         
@@ -254,4 +241,4 @@ while True:
                   break
             
             except Exception as e:
-                  print(colorama.Fore.RED + colorama.Style.BRIGHT + str(e) + colorama.Style.RESET_ALL)
+                  print(pcolor.Fore.RED + pcolor.Style.BRIGHT + str(e) + pcolor.Style.RESET_ALL)
