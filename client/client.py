@@ -21,6 +21,7 @@ from PyInquirer import style_from_dict, Token, prompt, Separator
 from pprint import pprint
 from tqdm import tqdm
 from natsort import natsorted, ns
+from cryptography.fernet import Fernet
 
 print("Welcome to sRFS - Simple Remote File System")
 print('Loading...')
@@ -41,6 +42,8 @@ def getPrivateIp():
       return privateIp
 
 class settings:
+      serverAddr = (0, 9876)
+      ftsAddr = (0, 9877)
       txtformat = 'utf-8'
       ftspacketsize = 1024
       
@@ -67,7 +70,9 @@ class dirEntry:
             self.name = name
             self.type = type
             
-            
+class crypto:
+      key = None
+      fernet = None
 
 def sendFile(filename):
       ftc = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -255,13 +260,16 @@ while True:
             pass
 
 while True:
-      client.send(pickle.dumps(passwordPrompt()))
+      Env.password = passwordPrompt()
+      client.send(pickle.dumps(Env.password))
       correct = pickle.loads(client.recv(1024))
       if correct:
             break
       else:
             print("Password is incorrect. Try again.")
       
+crypto.key = Env.password.encode('utf-8') 
+crypto.fernet = Fernet(crypto.key )
 
 client.send(pickle.dumps({'action': EventID.GETCWD}))
 Env.current_dir = client.recv(65535).decode('utf-8')

@@ -1,3 +1,9 @@
+# App-specific files
+server/password.txt
+client/lastIp.txt
+password.txt
+lastIp.txt
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
@@ -7,6 +13,8 @@ __pycache__/
 *.so
 
 # Distribution / packaging
+
+requirements.txt
 .Python
 build/
 develop-eggs/
