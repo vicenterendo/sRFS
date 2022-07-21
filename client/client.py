@@ -78,23 +78,33 @@ class dirEntry:
             self.type = type
 
 def sendFile(filename):
-      global crypto
+      global fts
       ftc = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
       ftc.connect(settings.ftsAddr)
-      with open(filename, 'rb') as f:
-            data = f.read()
-            size = sys.getsizeof(data)
-      ftc.send(crypto.encrypt(str(size).encode(settings.txtformat)))
-      crypto.decrypt(ftc.recv(1024))
+      try: os.mkdir(".\\.tempsrfs\\")
+      except: pass
+      
       
       with open(filename, 'rb') as f:
+            with open("./.tempsrfs/" + filename.split(Env.pathseparator)[-1], "wb") as f2:
+                  f2.write(crypto.encrypt(f.read()))
+                  
+      with open(".\\.tempsrfs\\" + filename.split(Env.pathseparator)[-1], 'rb') as f:
+            data = f.read()
+            size = sys.getsizeof(data)
+            
+      ftc.send(crypto.encrypt(str(size).encode('utf-8')))
+      ftc.recv(1024)
+      
+      with open("./.tempsrfs/" + filename.split(Env.pathseparator)[-1], 'rb') as f:
             while True:
-                  packet = f.read(settings.ftspacketsize)
+                  packet = f.read(1024)
                   
                   if not packet:
                         break
                   
-                  ftc.send(crypto.encrypt(packet))
+                  ftc.send(packet)
+                  pass
                   
 def rcvFile(filename):
       global crypto
@@ -113,14 +123,22 @@ def rcvFile(filename):
             os.remove(filename)
       except FileNotFoundError:
             pass
+      packet = bytes()
+      encdata = bytes()
       with tqdm(size/1000000) as bar:
-            with open(filename, 'ab') as f:
+            with open(filename + ".temp", 'ab') as f:
                   while downloadedbytes < size:   
-                        packet = crypto.decrypt(ftc.recv(1024))
-                        f.write(packet)
-                        bar.update(sys.getsizeof(packet)/1000000)
+                        packet = ftc.recv(1024)
                         if sys.getsizeof(packet) == 33:
                               break
+                        f.write(packet)
+                        bar.update(sys.getsizeof(packet)/1000000)
+                        
+
+      with open(filename + ".temp", 'rb') as f: encdata = f.read()
+      with open(filename, 'wb') as f: f.write(crypto.decrypt(encdata))
+            
+      
             
       ftc.close()
       
@@ -294,14 +312,16 @@ while True:
             data = b""
             #currtimeout = 0.1
             while True:
-                  packet = crypto.decrypt(client.recv(4096))
+                  packet = client.recv(4096)
                   if not packet: break
                   data += packet
                   try: 
-                        dir_list = pickle.loads(data) 
+                        _data = crypto.decrypt(data)
+                        dir_list = pickle.loads(_data) 
                         break
                   except:
                         continue
+            
                   
                   
             #client.settimeout(None)
