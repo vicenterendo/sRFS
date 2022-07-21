@@ -58,8 +58,8 @@ Made to be used on personal computers as well as remote access to servers, sRFS 
 <br> 
 
 
-- [ ] Add a gui
-- [ ] Encrypted connection
+- [ ] Make client compatible for Linux
+- [ ] Increased Security
 - [x] Solve [issues](https://github.com/vicenterendo/sRFS/issues) 
 
 
