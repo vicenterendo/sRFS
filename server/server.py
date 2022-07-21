@@ -24,7 +24,10 @@ from pprint import pprint
 from natsort import natsorted, ns
 import platform
 from cryptography.fernet import Fernet
-from Crypto.Cipher import AES
+import time
+
+try: os.mkdir(".\\.temprfs\\")
+except: pass
 
 class Prompt:
       def connOpen(message):
@@ -91,9 +94,8 @@ def passwordPrompt():
       return answer['password']
 
 if not os.path.exists("./key.srfskey"):
-      counter = os.urandom(16) #CTR counter string value with length of 16 bytes.
-      key = os.urandom(32) #AES keys may be 128 bits (16 bytes), 192 bits (24 bytes) or 256 bits (32 bytes) long.
-      crypto = AES.new(key, AES.MODE_CTR, counter=lambda: counter)
+      key = Fernet.generate_key()
+      crypto = Fernet(key)
       print(pcolor.Fore.BLUE + pcolor.Style.BRIGHT + "Generating encryption key...")
       with open("./key.srfskey", "wb") as f:
             f.write(pickle.dumps(crypto))
@@ -112,36 +114,69 @@ fts.bind((getPrivateIp(), 9877))
 
 def rcvFile():
       global fts
+      filename = ".\\.tempsrfs\\" + str(time.time())
       fts.listen()
       ftc, addr = fts.accept()
+
       size = int(crypto.decrypt(ftc.recv(1024)))
       ftc.send(crypto.encrypt('ready'.encode('utf-8')))
-      filedata = bytes()
-      while sys.getsizeof(filedata) < size:
-            filedata += crypto.decrypt(ftc.recv(1024))
+      downloadedbytes = 0
+      try:
+            os.remove(filename)
+      except FileNotFoundError:
+            pass
+      packet = bytes()
+      encdata = bytes()
+      with open(filename + ".temp", 'ab') as f:
+            while downloadedbytes < size:   
+                  packet = ftc.recv(1024)
+                  if sys.getsizeof(packet) == 33:
+                        break
+                  f.write(packet)
+                        
+      
+      with open(filename + ".temp", 'rb') as f: encdata = f.read()
       ftc.close()
-            
-      return filedata
+      
+      return crypto.decrypt(encdata)
 
 def sendFile(filename):
       global fts
       fts.listen()
       ftc, addr = fts.accept()
+      
+      try: os.mkdir(".\\.tempsrfs\\")
+      except: pass
+      
+      
       with open(filename, 'rb') as f:
+            with open(".\\.tempsrfs\\" + filename.split(Env.pathseparator)[-1], "wb") as f2:
+                  f2.write(crypto.encrypt(f.read()))
+                  
+      with open(".\\.tempsrfs\\" + filename.split(Env.pathseparator)[-1], 'rb') as f:
             data = f.read()
             size = sys.getsizeof(data)
             
       ftc.send(crypto.encrypt(str(size).encode('utf-8')))
       ftc.recv(1024)
       
-      with open(filename, 'rb') as f:
+      with open(".\\.tempsrfs\\" + filename.split(Env.pathseparator)[-1], 'rb') as f:
             while True:
                   packet = f.read(1024)
                   
                   if not packet:
                         break
                   
-                  ftc.send(crypto.encrypt(packet))
+                  ftc.send(packet)
+                  pass
+                  
+                        
+
+
+if platform.system().upper() == 'WINDOWS':
+      Env.pathseparator = '\\'
+else:
+      Env.pathseparator = '/'
 
 while True:
       server.listen()
@@ -240,5 +275,5 @@ while True:
                   Prompt.connClose('Connection Lost: Broken Pipe')
                   break
             
-            except Exception as e:
-                  print(pcolor.Fore.RED + pcolor.Style.BRIGHT + str(e) + pcolor.Style.RESET_ALL)
+            #except Exception as e:
+            #      print(pcolor.Fore.RED + pcolor.Style.BRIGHT + str(e) + pcolor.Style.RESET_ALL)
