@@ -67,6 +67,7 @@ class EventID:
       GETCWD = 8
       GETPLATFORM = 9
       RUNCMD = 10
+      ISFOLDER = 11
       
 class Env:
       current_dir = '.'
@@ -232,6 +233,11 @@ def findFileInList(filelist, query):
                   foundAt = i
       return foundAt
 
+def isdir(path):
+      client.send(crypto.encrypt(pickle.dumps({'action': EventID.ISFOLDER, 'details': {'path': path}})))
+      isDir = pickle.loads(crypto.decrypt(client.recv(1024)))
+      return isDir
+
 client = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 
 if not os.path.exists('lastIp.txt'):
@@ -350,30 +356,34 @@ while True:
             
             if userinput.startswith('/'):           
                   if userinput.startswith('/goto'):
-                        custompath = input('Path >  ').replace(':c:', Env.current_dir).replace('/', Env.pathseparator)
-                        _custompath = custompath
+                        custompath = input('Path >  ').replace('/', Env.pathseparator).replace('.' + Env.pathseparator, Env.current_dir)
                         
-                        if Env.pathseparator not in custompath:
-                              custompath = Env.current_dir + custompath
+                        if Env.serverplatform.lower() == 'windows':
+                              if not custompath[1] == ":":
+                                    custompath = Env.current_dir + custompath
+                        else:
+                              if not custompath[0] == "/":
+                                    custompath = Env.current_dir + custompath
+                              
+                        fname = custompath.split(Env.pathseparator)[-1]
                         client.send(crypto.encrypt(pickle.dumps({'action': EventID.CHECKPATH, 'details': {'path': custompath}})))
                         isPath = pickle.loads(crypto.decrypt(client.recv(1024)))
                         if isPath:
-                              if findFileInList(dir_list, _custompath) != None :
-                                    if dir_list[findFileInList(dir_list, _custompath)].type == 0:       
-                                          currunix = '{' + str(time.time()) + '}'
-                                          client.send(crypto.encrypt(pickle.dumps({'action': EventID.GETFILE, 'details': {'path': custompath}})))
-                                          tempfile = Env.temp_dir + currunix + Env.pathseparator + _custompath
-                  
-                                          if 'rfs' not in os.listdir(tfutils.gettempdir()): os.mkdir(Env.temp_dir)
- 
-                                          try: os.mkdir(Env.temp_dir + currunix)
-                                          except: pass
-                                                
+                              if isdir(custompath) == 0:       
+                                    currunix = '{' + str(time.time()) + '}'
+                                    client.send(crypto.encrypt(pickle.dumps({'action': EventID.GETFILE, 'details': {'path': custompath}})))
+                                    tempfile = Env.temp_dir + currunix + Env.pathseparator + fname
+            
+                                    if 'rfs' not in os.listdir(tfutils.gettempdir()): os.mkdir(Env.temp_dir)
+
+                                    try: os.mkdir(Env.temp_dir + currunix)
+                                    except: pass
                                           
-                                          rcvFile(tempfile)
-                                          os.startfile(tempfile)
                                     
-                              else: Env.current_dir = custompath
+                                    rcvFile(tempfile)
+                                    os.startfile(tempfile)
+                              
+                        else: Env.current_dir = custompath
                                     
                                     
                         if not Env.current_dir.endswith(Env.pathseparator):
