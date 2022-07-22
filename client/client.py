@@ -1,15 +1,5 @@
 from __future__ import print_function, unicode_literals
 import os
-
-def clearConsole():
-      if os.name == 'nt':
-            os.system('cls')
-      else:
-            os.system('clear')
-            
-clearConsole()
-
-
 import socket, pickle, sys, win32gui
 import time
 import shutil
@@ -30,6 +20,13 @@ from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 import platform
 
+def clearConsole():
+      if os.name == 'nt':
+            os.system('cls')
+      else:
+            os.system('clear')
+            
+clearConsole()
 
 print(os.getcwd())
 print("Welcome to sRFS - Simple Remote File System")
