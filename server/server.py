@@ -4,14 +4,6 @@ import os
 from re import L
 import subprocess
 from telnetlib import ENCRYPT
-
-def clearConsole():
-      if os.name == 'nt':
-            os.system('cls')
-      else:
-            os.system('clear')
-clearConsole()
-
 import sys
 import socket
 import pickle
@@ -25,6 +17,15 @@ from natsort import natsorted, ns
 import platform
 from cryptography.fernet import Fernet
 import time
+
+def clearConsole():
+      if os.name == 'nt':
+            os.system('cls')
+      else:
+            os.system('clear')
+clearConsole()
+
+
 
 
 class Prompt:
