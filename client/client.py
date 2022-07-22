@@ -299,7 +299,7 @@ if not os.path.exists("./key.srfskey"):
       print(pcolor.Fore.RED + pcolor.Style.BRIGHT + "No \"key.srfskey\" file found on the current directory, press enter to select a file...")
       input()
       filename, customfilter, flags=win32gui.GetOpenFileNameW()
-      shutil.copy(filename, currcwd + "\\key.srfskey")
+      shutil.copy(filename, currcwd + Env.localpathseparator + "key.srfskey")
 
 with open("./key.srfskey", 'rb') as f:
       crypto = Fernet(pickle.loads(f.read()))
@@ -364,10 +364,11 @@ while True:
             if userinput.startswith('/'):           
                   if userinput.startswith('/goto'):
                         custompath = input('Path >  ').replace('/', Env.pathseparator).replace('.' + Env.pathseparator, Env.current_dir)
-                        
+                         
                         if Env.serverplatform.lower() == 'windows':
                               if not custompath[1] == ":":
                                     custompath = Env.current_dir + custompath
+
                         else:
                               if not custompath[0] == "/":
                                     custompath = Env.current_dir + custompath
@@ -376,7 +377,9 @@ while True:
                         client.send(crypto.encrypt(pickle.dumps({'action': EventID.CHECKPATH, 'details': {'path': custompath}})))
                         isPath = pickle.loads(crypto.decrypt(client.recv(1024)))
                         if isPath:
-                              if isdir(custompath) == 0:       
+                              if isdir(custompath) == 0: 
+                                    if len(custompath) == 2 and custompath.endswith(":"):
+                                          custompath += Env.pathseparator      
                                     currunix = '{' + str(time.time()) + '}'
                                     client.send(crypto.encrypt(pickle.dumps({'action': EventID.GETFILE, 'details': {'path': custompath}})))
                                     tempfile = Env.temp_dir + currunix + Env.pathseparator + fname
@@ -389,6 +392,7 @@ while True:
                                     
                                     rcvFile(tempfile)
                                     os.startfile(tempfile)
+                              else: Env.current_dir = custompath
                               
                         else: Env.current_dir = custompath
                                     
