@@ -125,7 +125,7 @@ def rcvFile(filename):
             pass
       packet = bytes()
       encdata = bytes()
-      with tqdm(size/1000000) as bar:
+      with tqdm(total=size/1000000) as bar:
             with open(filename + ".temp", 'ab') as f:
                   while downloadedbytes < size:   
                         packet = ftc.recv(1024)
@@ -289,11 +289,13 @@ if not os.path.exists("./key.srfskey"):
       shutil.copy(filename, currcwd + "\\key.srfskey")
 
 with open("./key.srfskey", 'rb') as f:
-      crypto = pickle.loads(f.read())
+      crypto = Fernet(pickle.loads(f.read()))
       
 
 
-client.send(crypto.encrypt(pickle.dumps({'action': EventID.GETCWD})))
+toSend = crypto.encrypt(pickle.dumps({'action': EventID.GETCWD})) 
+client.send(toSend)
+
 Env.current_dir = crypto.decrypt(client.recv(65535)).decode('utf-8')
 
 client.send(crypto.encrypt(pickle.dumps({'action': EventID.GETPLATFORM})))
@@ -412,7 +414,7 @@ while True:
                   if userinput.startswith('/command'):
                         command = normalPrompt('Bash command: ')
                         client.send(crypto.encrypt(pickle.dumps({'action': EventID.RUNCMD, 'details': {'command': command}})))
-                        received = crypto.decrypt(client.recv(65535))
+                        received = pickle.loads(crypto.decrypt(client.recv(65535)))
                         print(str(received)[2:-1].replace('\\n', '\n').replace('\\r', '\r'))
                         print('---------- [END OF OUTPUT] ----------')
                         input('Press enter to continue...')
@@ -437,8 +439,9 @@ while True:
                         except: pass
                               
                         rcvFile(tempfile)
-                        os.startfile(tempfile)
-                  
+                        try: os.startfile(tempfile)
+                        except: pass
+                        
                   elif currentry.name == '..':
 
                         if not Env.current_dir.endswith(':'):
