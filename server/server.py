@@ -62,6 +62,7 @@ class Env:
             pathseparator = "/"
       
       temp_dir = tfutils.gettempdir() + pathseparator + 'rfsServer' + pathseparator
+      debug = False
 
 
 try:
