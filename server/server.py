@@ -26,8 +26,6 @@ import platform
 from cryptography.fernet import Fernet
 import time
 
-try: os.mkdir(".\\.temprfs\\")
-except: pass
 
 class Prompt:
       def connOpen(message):
@@ -95,15 +93,17 @@ def passwordPrompt():
 
 if not os.path.exists("./key.srfskey"):
       key = Fernet.generate_key()
-      crypto = Fernet(key)
       print(pcolor.Fore.BLUE + pcolor.Style.BRIGHT + "Generating encryption key...")
       with open("./key.srfskey", "wb") as f:
-            f.write(pickle.dumps(crypto))
+            f.write(pickle.dumps(key))
       print(pcolor.Fore.GREEN + f"Key saved on{pcolor.Style.BRIGHT} key.srfskey" + pcolor.Style.RESET_ALL)
-else:
-      crypto = pickle.loads(open("./key.srfskey", "rb").read())
+
+Env.key = pickle.loads(open("./key.srfskey", "rb").read())
+crypto = Fernet(Env.key)
 
 os.chdir(str(Path.home()))
+try: os.mkdir(".\\.temprfs\\")
+except: pass
 server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
 server.bind((getPrivateIp(), 9876))
@@ -188,9 +188,10 @@ while True:
                   conn.settimeout(3)
                   while True:
                         try: 
-                              rawEntry = crypto.decrypt(conn.recv(2048))
+                              rawEntry = conn.recv(2048)
+                              rawEntry = crypto.decrypt(rawEntry)
                               break
-                        except: pass
+                        except TimeoutError: pass
                   conn.settimeout(None)
                         
                   try:
@@ -259,7 +260,10 @@ while True:
                         fullcommand = jsonEntry['details']['command']
                         command = jsonEntry['details']['command'].split()[0]
                         parameters = fullcommand.strip(jsonEntry['details']['command'].split()[0])
-                        conn.send(crypto.encrypt(subprocess.check_output([command])))
+                        commandoutput = None
+                        commandoutput = subprocess.check_output(fullcommand, shell=True)
+                        
+                        conn.send(crypto.encrypt(pickle.dumps(commandoutput)))
 
                   
                         
