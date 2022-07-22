@@ -28,6 +28,8 @@ from cryptography.fernet import Fernet
 from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
+import platform
+
 
 print(os.getcwd())
 print("Welcome to sRFS - Simple Remote File System")
@@ -71,7 +73,12 @@ class EventID:
       
 class Env:
       current_dir = '.'
+      if platform.system().lower() == 'windows':
+            localpathseparator = "\\"
+      else:
+            localpathseparator = "/"
       temp_dir = tfutils.gettempdir() + '\\rfs\\'
+      
 
 class dirEntry:
       def __init__(self, type, name):
@@ -82,22 +89,22 @@ def sendFile(filename):
       global fts
       ftc = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
       ftc.connect(settings.ftsAddr)
-      try: os.mkdir(".\\.tempsrfs\\")
+      try: os.mkdir("." + Env.pathseparator + ".tempsrfs" + Env.pathseparator)
       except: pass
-      
+      tempfile = "." + Env.localpathseparator + ".tempsrfs" + Env.localpathseparator + filename.split(Env.localpathseparator)[-1]
       
       with open(filename, 'rb') as f:
-            with open("./.tempsrfs/" + filename.split(Env.pathseparator)[-1], "wb") as f2:
+            with open(tempfile, "wb") as f2:
                   f2.write(crypto.encrypt(f.read()))
                   
-      with open(".\\.tempsrfs\\" + filename.split(Env.pathseparator)[-1], 'rb') as f:
+      with open(tempfile, 'rb') as f:
             data = f.read()
             size = sys.getsizeof(data)
             
       ftc.send(crypto.encrypt(str(size).encode('utf-8')))
       ftc.recv(1024)
       
-      with open("./.tempsrfs/" + filename.split(Env.pathseparator)[-1], 'rb') as f:
+      with open(tempfile, 'rb') as f:
             while True:
                   packet = f.read(1024)
                   
