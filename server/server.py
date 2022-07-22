@@ -57,6 +57,7 @@ class dirEntry:
             
 class Env:
       temp_dir = tfutils.gettempdir() + '\\rfsServer\\'
+      
 
 try:
       os.mkdir(Env.temp_dir)
@@ -283,5 +284,8 @@ while True:
                   Prompt.connClose('Connection Lost: Broken Pipe')
                   break
             
-            #except Exception as e:
-            #      print(pcolor.Fore.RED + pcolor.Style.BRIGHT + str(e) + pcolor.Style.RESET_ALL)
+            except Exception as e:
+                  if Env.debug == True:
+                        raise e
+                  else:
+                        print(pcolor.Fore.RED + pcolor.Style.BRIGHT + str(e) + pcolor.Style.RESET_ALL)
