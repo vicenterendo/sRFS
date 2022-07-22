@@ -14,24 +14,34 @@ import socket, pickle, sys, win32gui
 import time
 import shutil
 import tempfile as tfutils
-import colorama
+import colorama as pcolor
 from tkinter import filedialog as fd
 from alive_progress import alive_bar
 from PyInquirer import style_from_dict, Token, prompt, Separator
 from pprint import pprint
 from tqdm import tqdm
 from natsort import natsorted, ns
+from cryptography.fernet import Fernet
+import secrets
+from base64 import urlsafe_b64encode as b64e, urlsafe_b64decode as b64d
+from cryptography.fernet import Fernet
+from cryptography.hazmat.backends import default_backend
+from cryptography.hazmat.primitives import hashes
+from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
+import platform
 
+
+print(os.getcwd())
 print("Welcome to sRFS - Simple Remote File System")
 print('Loading...')
 
 class DebugPrint:
       def connOpen(message):
-            print(colorama.Fore.GREEN + colorama.Style.BRIGHT + '[+] ' + colorama.Style.RESET_ALL + colorama.Fore.BLUE + message + colorama.Style.RESET_ALL)
+            print(pcolor.Fore.GREEN + pcolor.Style.BRIGHT + '[+] ' + pcolor.Style.RESET_ALL + pcolor.Fore.BLUE + message + pcolor.Style.RESET_ALL)
       def connMessage(message):
-            print(colorama.Fore.CYAN + colorama.Style.BRIGHT + '[/] ' + colorama.Style.RESET_ALL + colorama.Fore.BLUE + message + colorama.Style.RESET_ALL)
+            print(pcolor.Fore.CYAN + pcolor.Style.BRIGHT + '[/] ' + pcolor.Style.RESET_ALL + pcolor.Fore.BLUE + message + pcolor.Style.RESET_ALL)
       def connClose(message):
-            print(colorama.Fore.RED + colorama.Style.BRIGHT + '[-] ' + colorama.Style.RESET_ALL + colorama.Fore.BLUE + message + colorama.Style.RESET_ALL)
+            print(pcolor.Fore.RED + pcolor.Style.BRIGHT + '[-] ' + pcolor.Style.RESET_ALL + pcolor.Fore.BLUE + message + pcolor.Style.RESET_ALL)
 
 def getPrivateIp():
       s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -41,6 +51,8 @@ def getPrivateIp():
       return privateIp
 
 class settings:
+      serverAddr = (0, 9876)
+      ftsAddr = (0, 9877)
       txtformat = 'utf-8'
       ftspacketsize = 1024
       
@@ -57,37 +69,53 @@ class EventID:
       GETCWD = 8
       GETPLATFORM = 9
       RUNCMD = 10
+      ISFOLDER = 11
       
 class Env:
       current_dir = '.'
+      if platform.system().lower() == 'windows':
+            localpathseparator = "\\"
+      else:
+            localpathseparator = "/"
       temp_dir = tfutils.gettempdir() + '\\rfs\\'
+      
 
 class dirEntry:
       def __init__(self, type, name):
             self.name = name
             self.type = type
-            
-            
 
 def sendFile(filename):
+      global fts
       ftc = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
       ftc.connect(settings.ftsAddr)
-      with open(filename, 'rb') as f:
-            data = f.read()
-            size = sys.getsizeof(data)
-      ftc.send(str(size).encode(settings.txtformat))
-      ftc.recv(1024)
+      try: os.mkdir("." + Env.pathseparator + ".tempsrfs" + Env.pathseparator)
+      except: pass
+      tempfile = "." + Env.localpathseparator + ".tempsrfs" + Env.localpathseparator + filename.split(Env.localpathseparator)[-1]
       
       with open(filename, 'rb') as f:
+            with open(tempfile, "wb") as f2:
+                  f2.write(crypto.encrypt(f.read()))
+                  
+      with open(tempfile, 'rb') as f:
+            data = f.read()
+            size = sys.getsizeof(data)
+            
+      ftc.send(crypto.encrypt(str(size).encode('utf-8')))
+      ftc.recv(1024)
+      
+      with open(tempfile, 'rb') as f:
             while True:
-                  packet = f.read(settings.ftspacketsize)
+                  packet = f.read(1024)
                   
                   if not packet:
                         break
                   
                   ftc.send(packet)
+                  pass
                   
 def rcvFile(filename):
+      global crypto
       ftc = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
       
       while True:
@@ -96,21 +124,29 @@ def rcvFile(filename):
                   break
             except ConnectionRefusedError:
                   pass
-      size = int(ftc.recv(1024))
-      ftc.send('ready'.encode('utf-8'))
+      size = int(crypto.decrypt(ftc.recv(1024)))
+      ftc.send(crypto.encrypt('ready'.encode('utf-8')))
       downloadedbytes = 0
       try:
             os.remove(filename)
       except FileNotFoundError:
             pass
-      with tqdm(size/1000000) as bar:
-            with open(filename, 'ab') as f:
+      packet = bytes()
+      encdata = bytes()
+      with tqdm(total=size/1000000) as bar:
+            with open(filename + ".temp", 'ab') as f:
                   while downloadedbytes < size:   
                         packet = ftc.recv(1024)
-                        f.write(packet)
-                        bar.update(sys.getsizeof(packet)/1000000)
                         if sys.getsizeof(packet) == 33:
                               break
+                        f.write(packet)
+                        bar.update(sys.getsizeof(packet)/1000000)
+                        
+
+      with open(filename + ".temp", 'rb') as f: encdata = f.read()
+      with open(filename, 'wb') as f: f.write(crypto.decrypt(encdata))
+            
+      
             
       ftc.close()
       
@@ -204,6 +240,10 @@ def findFileInList(filelist, query):
                   foundAt = i
       return foundAt
 
+def isdir(path):
+      client.send(crypto.encrypt(pickle.dumps({'action': EventID.ISFOLDER, 'details': {'path': path}})))
+      isDir = pickle.loads(crypto.decrypt(client.recv(1024)))
+      return isDir
 
 client = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 
@@ -254,20 +294,25 @@ while True:
             print("Connection timed out, trying again...")
             pass
 
-while True:
-      client.send(pickle.dumps(passwordPrompt()))
-      correct = pickle.loads(client.recv(1024))
-      if correct:
-            break
-      else:
-            print("Password is incorrect. Try again.")
+if not os.path.exists("./key.srfskey"):
+      currcwd = os.getcwd()
+      print(pcolor.Fore.RED + pcolor.Style.BRIGHT + "No \"key.srfskey\" file found on the current directory, press enter to select a file...")
+      input()
+      filename, customfilter, flags=win32gui.GetOpenFileNameW()
+      shutil.copy(filename, currcwd + Env.localpathseparator + "key.srfskey")
+
+with open("./key.srfskey", 'rb') as f:
+      crypto = Fernet(pickle.loads(f.read()))
       
 
-client.send(pickle.dumps({'action': EventID.GETCWD}))
-Env.current_dir = client.recv(65535).decode('utf-8')
 
-client.send(pickle.dumps({'action': EventID.GETPLATFORM}))
-Env.serverplatform = client.recv(65535).decode('utf-8')
+toSend = crypto.encrypt(pickle.dumps({'action': EventID.GETCWD})) 
+client.send(toSend)
+
+Env.current_dir = crypto.decrypt(client.recv(65535)).decode('utf-8')
+
+client.send(crypto.encrypt(pickle.dumps({'action': EventID.GETPLATFORM})))
+Env.serverplatform = crypto.decrypt(client.recv(65535)).decode('utf-8')
 if Env.serverplatform.upper() == 'WINDOWS':
       Env.pathseparator = '\\'
 else:
@@ -278,7 +323,7 @@ while True:
             if not Env.current_dir.endswith(Env.pathseparator):
                   Env.current_dir += Env.pathseparator
             clearConsole()
-            client.send(pickle.dumps({'action': EventID.LISTFILES, 'details': {'path': Env.current_dir}}))
+            client.send(crypto.encrypt(pickle.dumps({'action': EventID.LISTFILES, 'details': {'path': Env.current_dir}})))
             data = b""
             #currtimeout = 0.1
             while True:
@@ -286,10 +331,12 @@ while True:
                   if not packet: break
                   data += packet
                   try: 
-                        dir_list = pickle.loads(data) 
+                        _data = crypto.decrypt(data)
+                        dir_list = pickle.loads(_data) 
                         break
                   except:
                         continue
+            
                   
                   
             #client.settimeout(None)
@@ -316,30 +363,38 @@ while True:
             
             if userinput.startswith('/'):           
                   if userinput.startswith('/goto'):
-                        custompath = input('Path >  ').replace(':c:', Env.current_dir).replace('/', Env.pathseparator)
-                        _custompath = custompath
-                        
-                        if Env.pathseparator not in custompath:
-                              custompath = Env.current_dir + custompath
-                        client.send(pickle.dumps({'action': EventID.CHECKPATH, 'details': {'path': custompath}}))
-                        isPath = pickle.loads(client.recv(1024))
+                        custompath = input('Path >  ').replace('/', Env.pathseparator).replace('.' + Env.pathseparator, Env.current_dir)
+                         
+                        if Env.serverplatform.lower() == 'windows':
+                              if not custompath[1] == ":":
+                                    custompath = Env.current_dir + custompath
+
+                        else:
+                              if not custompath[0] == "/":
+                                    custompath = Env.current_dir + custompath
+                              
+                        fname = custompath.split(Env.pathseparator)[-1]
+                        client.send(crypto.encrypt(pickle.dumps({'action': EventID.CHECKPATH, 'details': {'path': custompath}})))
+                        isPath = pickle.loads(crypto.decrypt(client.recv(1024)))
                         if isPath:
-                              if findFileInList(dir_list, _custompath) != None :
-                                    if dir_list[findFileInList(dir_list, _custompath)].type == 0:       
-                                          currunix = '{' + str(time.time()) + '}'
-                                          client.send(pickle.dumps({'action': EventID.GETFILE, 'details': {'path': custompath}}))
-                                          tempfile = Env.temp_dir + currunix + Env.pathseparator + _custompath
-                  
-                                          if 'rfs' not in os.listdir(tfutils.gettempdir()): os.mkdir(Env.temp_dir)
- 
-                                          try: os.mkdir(Env.temp_dir + currunix)
-                                          except: pass
-                                                
+                              if isdir(custompath) == 0: 
+                                    if len(custompath) == 2 and custompath.endswith(":"):
+                                          custompath += Env.pathseparator      
+                                    currunix = '{' + str(time.time()) + '}'
+                                    client.send(crypto.encrypt(pickle.dumps({'action': EventID.GETFILE, 'details': {'path': custompath}})))
+                                    tempfile = Env.temp_dir + currunix + Env.pathseparator + fname
+            
+                                    if 'rfs' not in os.listdir(tfutils.gettempdir()): os.mkdir(Env.temp_dir)
+
+                                    try: os.mkdir(Env.temp_dir + currunix)
+                                    except: pass
                                           
-                                          rcvFile(tempfile)
-                                          os.startfile(tempfile)
                                     
+                                    rcvFile(tempfile)
+                                    os.startfile(tempfile)
                               else: Env.current_dir = custompath
+                              
+                        else: Env.current_dir = custompath
                                     
                                     
                         if not Env.current_dir.endswith(Env.pathseparator):
@@ -347,12 +402,12 @@ while True:
                         
                   if userinput.startswith('/upload'):
                         filename, customfilter, flags=win32gui.GetOpenFileNameW()
-                        client.send(pickle.dumps({'action': EventID.WRITEFILE, 'details': {'path': Env.current_dir + input('Save as >  ')}}))
+                        client.send(crypto.encrypt(pickle.dumps({'action': EventID.WRITEFILE, 'details': {'path': Env.current_dir + input('Save as >  ')}})))
                         sendFile(filename)
                   
                   if userinput.startswith('/delete'):
                         filetodel = Env.current_dir + choiceMenu(dir_list)
-                        client.send(pickle.dumps({'action': EventID.DELETEFILE, 'details': {'path': filetodel}}))
+                        client.send(crypto.encrypt(pickle.dumps({'action': EventID.DELETEFILE, 'details': {'path': filetodel}})))
                   
                   if userinput.startswith('/download'):
                         currunix = '{' + str(time.time()) + '}'
@@ -360,7 +415,7 @@ while True:
                         if dir_list[findFileInList(dir_list, filename)].type == 1:   
                               filetodownload = Env.current_dir + filename
                               tempfile = Env.temp_dir + currunix + '.zip'
-                              client.send(pickle.dumps({'action': EventID.DOWNLOADFOLDER, 'details': {'path': filetodownload}}))
+                              client.send(crypto.encrypt(pickle.dumps({'action': EventID.DOWNLOADFOLDER, 'details': {'path': filetodownload}})))
                               try: os.mkdir(Env.temp_dir + currunix)  
                               except: pass
                               rcvFile(tempfile)
@@ -369,7 +424,7 @@ while True:
                         else:
                               filetodownload = Env.current_dir + filename
                               tempfolder = Env.temp_dir + currunix
-                              client.send(pickle.dumps({'action': EventID.GETFILE, 'details': {'path': filetodownload}}))
+                              client.send(crypto.encrypt(pickle.dumps({'action': EventID.GETFILE, 'details': {'path': filetodownload}})))
                               try: os.mkdir(tempfolder)
                               except: pass
                                     
@@ -379,8 +434,8 @@ while True:
                               
                   if userinput.startswith('/command'):
                         command = normalPrompt('Bash command: ')
-                        client.send(pickle.dumps({'action': EventID.RUNCMD, 'details': {'command': command}}))
-                        received = client.recv(65535)
+                        client.send(crypto.encrypt(pickle.dumps({'action': EventID.RUNCMD, 'details': {'command': command}})))
+                        received = pickle.loads(crypto.decrypt(client.recv(65535)))
                         print(str(received)[2:-1].replace('\\n', '\n').replace('\\r', '\r'))
                         print('---------- [END OF OUTPUT] ----------')
                         input('Press enter to continue...')
@@ -396,7 +451,7 @@ while True:
                   if currentry.type == 0: 
                         currunix = '{' + str(time.time()) + '}'
                         tempfolder = Env.temp_dir + currunix
-                        client.send(pickle.dumps({'action': EventID.GETFILE, 'details': {'path': Env.current_dir + currentry.name}}))
+                        client.send(crypto.encrypt(pickle.dumps({'action': EventID.GETFILE, 'details': {'path': Env.current_dir + currentry.name}})))
                         tempfile = Env.temp_dir + currunix + Env.pathseparator + currentry.name
                         
                         if 'rfs' not in os.listdir(tfutils.gettempdir()): os.mkdir(Env.temp_dir)
@@ -405,8 +460,9 @@ while True:
                         except: pass
                               
                         rcvFile(tempfile)
-                        os.startfile(tempfile)
-                  
+                        try: os.startfile(tempfile)
+                        except: pass
+                        
                   elif currentry.name == '..':
 
                         if not Env.current_dir.endswith(':'):
@@ -424,7 +480,7 @@ while True:
       except KeyError:
             
             try: 
-                  client.send(pickle.dumps({'action': EventID.CLOSECONN}))
+                  client.send(crypto.encrypt(pickle.dumps({'action': EventID.CLOSECONN})))
                   client.close()
             except: pass
             sys.exit()
