@@ -56,8 +56,13 @@ class dirEntry:
             self.type = type
             
 class Env:
-      temp_dir = tfutils.gettempdir() + '\\rfsServer\\'
+      if platform.system().lower() == 'windows':
+            pathseparator = "\\"
+      else:
+            pathseparator = "/"
       
+      temp_dir = tfutils.gettempdir() + pathseparator + 'rfsServer' + pathseparator
+
 
 try:
       os.mkdir(Env.temp_dir)
@@ -104,7 +109,7 @@ Env.key = pickle.loads(open("./key.srfskey", "rb").read())
 crypto = Fernet(Env.key)
 
 os.chdir(str(Path.home()))
-try: os.mkdir(".\\.temprfs\\")
+try: os.mkdir("." + Env.pathseparator + ".tempsrfs" + Env.pathseparator)
 except: pass
 server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
@@ -116,7 +121,7 @@ fts.bind((getPrivateIp(), 9877))
 
 def rcvFile():
       global fts
-      filename = ".\\.tempsrfs\\" + str(time.time())
+      filename = "." + Env.pathseparator + ".tempsrfs" + Env.pathseparator + str(time.time())
       fts.listen()
       ftc, addr = fts.accept()
 
@@ -147,22 +152,22 @@ def sendFile(filename):
       fts.listen()
       ftc, addr = fts.accept()
       
-      try: os.mkdir(".\\.tempsrfs\\")
+      try: os.mkdir("." + Env.pathseparator + ".tempsrfs" + Env.pathseparator)
       except: pass
       
       
       with open(filename, 'rb') as f:
-            with open(".\\.tempsrfs\\" + filename.split(Env.pathseparator)[-1], "wb") as f2:
+            with open("." + Env.pathseparator + ".tempsrfs" + Env.pathseparator + filename.split(Env.pathseparator)[-1], "wb") as f2:
                   f2.write(crypto.encrypt(f.read()))
                   
-      with open(".\\.tempsrfs\\" + filename.split(Env.pathseparator)[-1], 'rb') as f:
+      with open("." + Env.pathseparator + ".tempsrfs" + Env.pathseparator + filename.split(Env.pathseparator)[-1], 'rb') as f:
             data = f.read()
             size = sys.getsizeof(data)
             
       ftc.send(crypto.encrypt(str(size).encode('utf-8')))
       ftc.recv(1024)
       
-      with open(".\\.tempsrfs\\" + filename.split(Env.pathseparator)[-1], 'rb') as f:
+      with open("." + Env.pathseparator + ".tempsrfs" + Env.pathseparator + filename.split(Env.pathseparator)[-1], 'rb') as f:
             while True:
                   packet = f.read(1024)
                   
